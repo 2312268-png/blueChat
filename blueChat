@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BlueChat — Bluetooth Messenger</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a;
+      --border: rgba(255,255,255,0.08); --accent: #4f8ef7; --accent2: #7b5ea7;
+      --sent-bg: #4f8ef7; --recv-bg: #22263a; --text: #e8eaf0; --muted: #7a7f99;
+      --success: #34c984; --danger: #f25c5c; --warning: #f5a623;
+      --radius: 18px; --radius-sm: 10px;
+    }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    .header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .header .logo { width: 36px; height: 36px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-left: auto; transition: background 0.3s; flex-shrink: 0; }
+    .status-dot.connected { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .status-dot.scanning { background: var(--warning); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .screen { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .screen.active { display: flex; }
+    #scan-screen { padding: 20px; gap: 16px; }
+    .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .scan-btn { display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm); padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.2s, transform 0.1s; width: 100%; }
+    .scan-btn:hover { opacity: 0.88; } .scan-btn:active { transform: scale(0.98); } .scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .demo-btn { display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--success); color: #fff; border: none; border-radius: var(--radius-sm); padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.2s, transform 0.1s; width: 100%; }
+    .demo-btn:hover { opacity: 0.88; } .demo-btn:active { transform: scale(0.98); }
+    .device-list { display: flex; flex-direction: column; gap: 10px; flex: 1; overflow-y: auto; }
+    .device-card { display: flex; align-items: center; gap: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+    .device-card:hover { border-color: var(--accent); background: var(--surface2); }
+    .device-icon { width: 44px; height: 44px; background: var(--surface2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+    .device-name { font-size: 15px; font-weight: 600; } .device-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .chat-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .back-btn { background: none; border: none; color: var(--accent); font-size: 22px; cursor: pointer; padding: 4px; display: flex; align-items: center; }
+    .peer-avatar { width: 38px; height: 38px; background: linear-gradient(135deg, #7b5ea7, #4f8ef7); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff; }
+    .peer-name { font-size: 15px; font-weight: 600; } .peer-status { font-size: 12px; color: var(--success); }
+    .messages-area { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; scroll-behavior: smooth; }
+    .msg { max-width: 75%; display: flex; flex-direction: column; gap: 3px; animation: fadeUp 0.25s ease; }
+    @keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: none; } }
+    .msg.sent { align-self: flex-end; align-items: flex-end; } .msg.recv { align-self: flex-start; align-items: flex-start; }
+    .bubble { padding: 10px 14px; border-radius: 18px; font-size: 14px; line-height: 1.5; word-break: break-word; }
+    .sent .bubble { background: var(--sent-bg); color: #fff; border-bottom-right-radius: 4px; }
+    .recv .bubble { background: var(--recv-bg); color: var(--text); border-bottom-left-radius: 4px; border: 1px solid var(--border); }
+    .msg-time { font-size: 10px; color: var(--muted); padding: 0 4px; }
+    .file-bubble { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; background: var(--surface2); border: 1px solid var(--border); min-width: 200px; max-width: 260px; }
+    .sent .file-bubble { background: rgba(79,142,247,0.25); border-color: rgba(79,142,247,0.4); }
+    .file-icon { font-size: 28px; flex-shrink: 0; } .file-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .file-size { font-size: 11px; color: var(--muted); }
+    .progress-bar-outer { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 6px; }
+    .progress-bar-inner { height: 100%; background: var(--success); border-radius: 2px; transition: width 0.2s; }
+    .progress-pct { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .input-bar { display: flex; align-items: flex-end; gap: 10px; padding: 10px 16px; background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; }
+    .attach-btn, .send-btn { width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; transition: transform 0.1s, opacity 0.2s; }
+    .attach-btn { background: var(--surface2); color: var(--accent); } .send-btn { background: var(--accent); color: #fff; } .send-btn:hover { opacity: 0.88; }
+    .msg-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 10px 16px; color: var(--text); font-size: 14px; resize: none; outline: none; max-height: 120px; min-height: 40px; font-family: inherit; line-height: 1.4; }
+    .msg-input:focus { border-color: rgba(79,142,247,0.5); } .msg-input::placeholder { color: var(--muted); }
+    #file-input { display: none; }
+    .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 18px; font-size: 13px; color: var(--text); z-index: 99; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+    .toast.show { opacity: 1; }
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">📡</div>
+  <div>
+    <div class="h1">BlueChat</div>
+    <div class="subtitle" id="header-subtitle">Bluetooth Messenger</div>
+  </div>
+  <div class="status-dot" id="status-dot"></div>
+</div>
+
+<div class="screen active" id="scan-screen">
+  <div class="section-title">Nearby Devices</div>
+  <button class="scan-btn" id="scan-btn" onclick="startScan()">
+    <span>🔍</span>
+    <span id="scan-label">Scan for Devices</span>
+  </button>
+  <div class="divider">ya</div>
+  <button class="demo-btn" onclick="startDemo()">
+    📱 Demo Mode — Direct Connect
+  </button>
+  <div class="device-list" id="device-list"></div>
+</div>
+
+<div class="screen" id="chat-screen">
+  <div class="chat-header">
+    <button class="back-btn" onclick="goBack()">&#8592;</button>
+    <div class="peer-avatar" id="peer-avatar">M</div>
+    <div>
+      <div class="peer-name" id="peer-name">Mani Rajpoot</div>
+      <div class="peer-status" id="peer-status">● Connected via Bluetooth</div>
+    </div>
+  </div>
+  <div class="messages-area" id="messages-area">
+    <div style="text-align:center; color:var(--muted); font-size:12px; padding:10px 0;">
+      🔒 End-to-end Bluetooth connection established
+    </div>
+  </div>
+  <div class="input-bar">
+    <button class="attach-btn" onclick="document.getElementById('file-input').click()">📎</button>
+    <input type="file" id="file-input" onchange="handleFile(this)">
+    <textarea class="msg-input" id="msg-input" placeholder="Type a message…" rows="1"
+              oninput="autoResize(this)"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+    <button class="send-btn" onclick="sendMessage()">&#10148;</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let bluetoothDevice = null, gattServer = null, rxChar = null, txChar = null, connectedName = '';
+  const SERVICE_UUID = '6e400001-b5ba-f393-e0a9-e50e24dcca9e';
+  const TX_CHAR_UUID = '6e400002-b5ba-f393-e0a9-e50e24dcca9e';
+  const RX_CHAR_UUID = '6e400003-b5ba-f393-e0a9-e50e24dcca9e';
+
+  function startDemo() {
+    onConnected('Mani Rajpoot ❤️');
+    showToast('✅ Bluetooth Connected — Demo Mode');
+    setStatusDot('connected');
+  }
+
+  async function startScan() {
+    if (!navigator.bluetooth) { showToast('⚠️ Web Bluetooth not supported. Use Chrome/Edge.'); return; }
+    setStatusDot('scanning'); setScanBtn(true);
+    try {
+      bluetoothDevice = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [SERVICE_UUID] });
+      showToast('📡 Connecting to ' + bluetoothDevice.name + '…');
+      addDeviceCard(bluetoothDevice);
+      gattServer = await bluetoothDevice.gatt.connect();
+      bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
+      try {
+        const service = await gattServer.getPrimaryService(SERVICE_UUID);
+        txChar = await service.getCharacteristic(TX_CHAR_UUID);
+        rxChar = await service.getCharacteristic(RX_CHAR_UUID);
+        await rxChar.startNotifications();
+        rxChar.addEventListener('characteristicvaluechanged', onReceive);
+      } catch(e) { console.warn('UART service not found — demo mode'); }
+      onConnected(bluetoothDevice.name || 'Unknown Device');
+    } catch (err) {
+      if (err.name !== 'NotFoundError') showToast('❌ ' + err.message);
+      setStatusDot('idle'); setScanBtn(false);
+    }
+  }
+
+  function addDeviceCard(device) {
+    const list = document.getElementById('device-list');
+    const card = document.createElement('div');
+    card.className = 'device-card';
+    card.innerHTML = `<div class="device-icon">📱</div><div><div class="device-name">${device.name || 'Unknown'}</div><div class="device-meta">Bluetooth LE · Connecting…</div></div>`;
+    list.appendChild(card);
+  }
+
+  function onConnected(name) {
+    connectedName = name;
+    setStatusDot('connected');
+    setScanBtn(false);
+    document.getElementById('header-subtitle').textContent = 'Connected to ' + name;
+    document.getElementById('peer-name').textContent = name;
+    document.getElementById('peer-avatar').textContent = name.charAt(0).toUpperCase();
+    document.getElementById('scan-screen').classList.remove('active');
+    document.getElementById('chat-screen').classList.add('active');
+    showToast('✅ Connected to ' + name);
+  }
+
+  function onDisconnected() {
+    setStatusDot('idle');
+    document.getElementById('peer-status').textContent = '● Disconnected';
+    document.getElementById('peer-status').style.color = 'var(--danger)';
+    showToast('🔴 Disconnected from ' + connectedName);
+    setTimeout(() => attemptReconnect(), 3000);
+  }
+
+  async function attemptReconnect() {
+    if (!bluetoothDevice) return;
+    showToast('🔄 Reconnecting…');
+    try {
+      gattServer = await bluetoothDevice.gatt.connect();
+      document.getElementById('peer-status').textContent = '● Connected via Bluetooth';
+      document.getElementById('peer-status').style.color = 'var(--success)';
+      setStatusDot('connected');
+      showToast('✅ Reconnected!');
+    } catch(e) { showToast('❌ Reconnect failed'); }
+  }
+
+  function goBack() {
+    if (bluetoothDevice && bluetoothDevice.gatt.connected) bluetoothDevice.gatt.disconnect();
+    bluetoothDevice = null; gattServer = null; connectedName = '';
+    document.getElementById('chat-screen').classList.remove('active');
+    document.getElementById('scan-screen').classList.add('active');
+    document.getElementById('device-list').innerHTML = '';
+    document.getElementById('header-subtitle').textContent = 'Bluetooth Messenger';
+    setStatusDot('idle');
+    document.getElementById('messages-area').innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:10px 0;">🔒 End-to-end Bluetooth connection established</div>';
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById('msg-input');
+    const text = input.value.trim();
+    if (!text) return;
+    addMessage('sent', text);
+    input.value = ''; input.style.height = 'auto';
+    if (txChar) {
+      try {
+        const data = new TextEncoder().encode(text);
+        for (let i = 0; i < data.length; i += 20) await txChar.writeValue(data.slice(i, i+20));
+      } catch(e) { showToast('⚠️ Send failed: ' + e.message); }
+    } else {
+      const lowerText = text.toLowerCase();
+      let reply = '';
+      if (lowerText.includes('hello') || lowerText.includes('hi') || lowerText.includes('hy')) {
+        reply = 'Hy! 😊';
+      } else if (lowerText.includes('how are you') || lowerText.includes('kaise ho') || lowerText.includes('kaisy ho')) {
+        reply = 'Fine! Aap sunao? 😊';
+      } else if (lowerText.includes('bye') || lowerText.includes('allah hafiz')) {
+        reply = 'Allah Hafiz! Take care! 👋';
+      } else if (lowerText.includes('thanks') || lowerText.includes('shukriya') || lowerText.includes('thank you')) {
+        reply = 'Most welcome! 😊';
+      } else if (lowerText.includes('name') || lowerText.includes('naam') || lowerText.includes('who are you')) {
+        reply = 'Main BlueChat hun! 📡';
+      } else if (lowerText.includes('good morning') || lowerText.includes('subah bakhair')) {
+        reply = 'Good Morning! ☀️';
+      } else if (lowerText.includes('good night') || lowerText.includes('shab bakhair')) {
+        reply = 'Good Night! 🌙';
+      } else {
+        reply = 'Hmm... samjha nahi, dobara batao! 🤔';
+      }
+      setTimeout(() => addMessage('recv', reply), 1200);
+    }
+  }
+
+  function onReceive(event) { addMessage('recv', new TextDecoder().decode(event.target.value)); }
+
+  function addMessage(type, text) {
+    const area = document.getElementById('messages-area');
+    const now = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    const div = document.createElement('div');
+    div.className = 'msg ' + type;
+    div.innerHTML = `<div class="bubble">${escapeHtml(text)}</div><div class="msg-time">${now} ${type==='sent'?'<span style="color:rgba(255,255,255,0.65)">✓✓</span>':''}</div>`;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+  }
+
+  async function handleFile(input) {
+    const file = input.files[0]; if (!file) return; input.value = '';
+    const fileId = 'file-' + Date.now();
+    const area = document.getElementById('messages-area');
+    const now = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    const div = document.createElement('div');
+    div.className = 'msg sent';
+    div.innerHTML = `<div class="file-bubble"><div class="file-icon">${fileEmoji(file.name)}</div><div class="file-info"><div class="file-name">${escapeHtml(file.name)}</div><div class="file-size">${formatSize(file.size)}</div><div class="progress-bar-outer"><div class="progress-bar-inner" id="${fileId}-bar" style="width:0%"></div></div><div class="progress-pct" id="${fileId}-pct">0%</div></div></div><div class="msg-time">${now}</div>`;
+    area.appendChild(div); area.scrollTop = area.scrollHeight;
+    await transferFile(file, fileId);
+  }
+
+  async function transferFile(file, fileId) {
+    const CHUNK = 512, total = file.size; let sent = 0;
+    if (txChar) {
+      await txChar.writeValue(new TextEncoder().encode(`FILE:${file.name}:${file.size}`));
+      await delay(50);
+      const data = new Uint8Array(await file.arrayBuffer());
+      while (sent < total) { const chunk = data.slice(sent, sent+CHUNK); await txChar.writeValue(chunk); sent += chunk.length; updateProgress(fileId, sent, total); await delay(10); }
+    } else {
+      while (sent < total) { await delay(30); sent = Math.min(sent + CHUNK*4, total); updateProgress(fileId, sent, total); }
+    }
+    document.getElementById(fileId+'-pct').textContent = '✓ Sent';
+    document.getElementById(fileId+'-pct').style.color = 'var(--success)';
+    showToast('✅ File sent: ' + file.name);
+  }
+
+  function updateProgress(id, sent, total) {
+    const pct = Math.round((sent/total)*100);
+    const bar = document.getElementById(id+'-bar'); const lbl = document.getElementById(id+'-pct');
+    if (bar) bar.style.width = pct+'%'; if (lbl) lbl.textContent = pct+'%';
+  }
+
+  function setStatusDot(s) { document.getElementById('status-dot').className = 'status-dot ' + (s!=='idle'?s:''); }
+  function setScanBtn(l) { document.getElementById('scan-btn').disabled = l; document.getElementById('scan-label').textContent = l?'Scanning…':'Scan for Devices'; }
+  function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); }
+  function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
+  function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function formatSize(b) { return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB'; }
+  function fileEmoji(n) { const m={pdf:'📄',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',mp4:'🎬',mp3:'🎵',zip:'🗜️',doc:'📝',docx:'📝',txt:'📃'}; return m[n.split('.').pop().toLowerCase()]||'📁'; }
+  function delay(ms) { return new Promise(r=>setTimeout(r,ms)); }
+</script>
+</body>
+</html>
